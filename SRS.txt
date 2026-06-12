@@ -1,0 +1,1173 @@
+1. Introduction
+1.1 Purpose
+This Software Requirements Specification defines the complete functional, non-functional, and architectural requirements for ResumeForge (working title), a web application that helps developers generate ATS-optimized resumes tailored to specific job descriptions. The system ingests a user's professional data (resume, GitHub projects, internships), stores it in a structured knowledge vault, and uses LLM-powered pipelines to forge targeted resumes in LaTeX format.
+1.2 Scope
+The application is designed for single-user/personal use with the architecture capable of supporting multiple users. It covers:
+
+User authentication (GitHub OAuth, Google OAuth, email/password)
+Knowledge vault creation and management (max 3 per user)
+PDF/LaTeX resume ingestion and structured data extraction
+GitHub repository analysis and metadata extraction
+LLM-powered resume generation targeting specific JDs
+LaTeX compilation and PDF delivery
+Automated job scraping from 4 Indian job platforms
+Resume archive with view, download, and LaTeX source access
+
+1.3 Intended Audience
+Developer (self), future contributors, and portfolio reviewers.
+1.4 Tech Stack Summary
+
+
+
+Layer
+Technology
+
+
+
+Frontend
+Next.js (App Router), Tailwind CSS
+
+
+Backend
+FastAPI (Python 3.11+)
+
+
+Database
+Neon (PostgreSQL + pgvector)
+
+
+Auth
+Neon Auth (GitHub, Google, Email)
+
+
+File Storage
+AWS S3
+
+
+Task Queue
+FastAPI BackgroundTasks (default), Celery + Redis (if needed)
+
+
+Caching
+Redis
+
+
+LaTeX Compilation
+Tectonic in Docker container
+
+
+LLMs
+GPT-4o (Forge), GPT-4o-mini (extraction/parsing), text-embedding-3-small (vectors)
+
+
+PDF Parsing
+LlamaParse (LlamaIndex)
+
+
+Job Scraping
+httpx + BeautifulSoup, Playwright (for JS-heavy sites)
+
+
+Scheduling
+APScheduler (AsyncIOScheduler)
+
+
+
+2. System Overview
+2.1 High-Level Architecture
+
+Copy to clipboard
+Insert at cursor
+┌─────────────────────────────────────────────────────────┐
+│                    Next.js Frontend                      │
+│  ┌──────────┬──────────┬──────────────┬───────────────┐  │
+│  │Dashboard │Knowledge │ Resume Forge │  Job Listings │  │
+│  │          │  Base    │              │               │  │
+│  └──────────┴──────────┴──────────────┴───────────────┘  │
+└──────────────────────┬──────────────────────────────────┘
+                       │ REST API
+┌──────────────────────▼──────────────────────────────────┐
+│                   FastAPI Backend                        │
+│  ┌──────────┬───────────┬────────────┬────────────────┐  │
+│  │Auth Layer│Ingestion  │Forge Engine│Scraping Engine │  │
+│  │          │Engine     │            │                │  │
+│  └──────────┴───────────┴────────────┴────────────────┘  │
+│  ┌──────────┬───────────┬────────────────────────────┐   │
+│  │Redis     │APScheduler│BackgroundTasks / Celery    │   │
+│  │(Cache)   │(Cron)     │(Async Processing)          │   │
+│  └──────────┴───────────┴────────────────────────────┘   │
+└────┬──────────────┬──────────────┬───────────────────────┘
+     │              │              │
+┌────▼────┐  ┌──────▼──────┐  ┌───▼───┐
+│Neon DB  │  │Tectonic     │  │AWS S3 │
+│(PG +    │  │Docker       │  │       │
+│pgvector)│  │(LaTeX→PDF)  │  │       │
+└─────────┘  └─────────────┘  └───────┘
+
+2.2 User Roles
+Single role: Authenticated User. No admin panel required. All users have identical permissions scoped to their own data.
+
+3. Functional Requirements
+3.1 Authentication Module (FR-AUTH)
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-AUTH-01
+System shall support GitHub OAuth login with repo + read:user scope
+P0
+
+
+FR-AUTH-02
+System shall support Google OAuth login
+P1
+
+
+FR-AUTH-03
+System shall support email/password signup with email verification
+P1
+
+
+FR-AUTH-04
+GitHub OAuth token shall be stored encrypted in the users table
+P0
+
+
+FR-AUTH-05
+GitHub OAuth token shall use OAuth App flow (non-expiring token)
+P0
+
+
+FR-AUTH-06
+System shall detect invalid/revoked GitHub tokens and set github_sync_status = false
+P0
+
+
+FR-AUTH-07
+System shall display "Reconnect GitHub" prompt when token is invalid
+P1
+
+
+FR-AUTH-08
+Auth shall be handled via Neon's built-in auth integration
+P0
+
+
+3.2 Dashboard (FR-DASH)
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-DASH-01
+Dashboard shall display 4 sections: Resume Archive, Knowledge Bases, Resume Forge, Listed Jobs
+P0
+
+
+FR-DASH-02
+Each section shall be a navigable card/link to its respective page
+P0
+
+
+FR-DASH-03
+Dashboard shall show summary counts (number of vaults, archived resumes, new jobs today)
+P2
+
+
+3.3 Knowledge Base Module (FR-KB)
+3.3.1 Vault Management
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-KB-01
+User shall be able to create a maximum of 3 knowledge vaults
+P0
+
+
+FR-KB-02
+Knowledge Base page shall list all existing vaults with "New" and "Edit" buttons
+P0
+
+
+FR-KB-03
+Clicking "New" shall open a popup/modal form for vault creation
+P0
+
+
+FR-KB-04
+Clicking "Edit" on an existing vault shall open the same form pre-filled with saved data
+P0
+
+
+FR-KB-05
+User shall be able to delete a vault (with confirmation dialog)
+P1
+
+
+3.3.2 Vault Creation Form
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-KB-10
+Form shall accept resume upload in PDF or LaTeX code (LaTeX recommended)
+P0
+
+
+FR-KB-11
+If PDF uploaded: system shall use LlamaParse to convert to Markdown, then extract structured sections
+P0
+
+
+FR-KB-12
+If LaTeX uploaded: system shall parse LaTeX structure directly to extract sections
+P0
+
+
+FR-KB-13
+System shall extract and separate: Education, Contact/Header, Achievements/Certifications as "constants"
+P0
+
+
+FR-KB-14
+System shall extract Skills as a categorized JSONB structure
+P0
+
+
+FR-KB-15
+System shall detect if a Summary/Objective section exists and set a boolean flag has_summary
+P0
+
+
+FR-KB-16
+After extraction, system shall display all extracted "constant" data in editable form fields for user review before saving
+P0
+
+
+FR-KB-17
+System shall show a parse_confidence_score warning icon on sections with confidence < 0.85 (PDF uploads only)
+P1
+
+
+FR-KB-18
+If confidence is critically low (< 0.5), system shall prompt user to upload LaTeX instead
+P1
+
+
+3.3.3 Projects Section
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-KB-20
+Form shall have an "Add Project" button in the projects section
+P0
+
+
+FR-KB-21
+Each project entry shall have fields: Name, Description, GitHub Link (required), Live Link (optional)
+P0
+
+
+FR-KB-22
+User shall be able to add up to 8 projects per vault
+P0
+
+
+FR-KB-23
+If user authenticated via GitHub OAuth, system shall fetch repo data using stored token on save
+P0
+
+
+FR-KB-24
+GitHub data fetched per repo: repo metadata (stars, language, description), language breakdown, root directory tree, dependency manifests (package.json / requirements.txt / go.mod etc.), README content
+P0
+
+
+FR-KB-25
+
+3.3.3 Projects Section (continued)
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-KB-25
+GitHub data fetch shall be limited to 5 API calls per repo: /repos/{owner}/{repo}, /repos/{owner}/{repo}/languages, /repos/{owner}/{repo}/contents/, /repos/{owner}/{repo}/contents/{manifest}, /repos/{owner}/{repo}/readme
+P0
+
+
+FR-KB-26
+System shall use GPT-4o-mini to synthesize form data + GitHub data into structured JSON with fields: tech_tags[], architecture_flags[], github_metadata{}, flattened_summary
+P0
+
+
+FR-KB-27
+System shall generate a 1536-dimensional vector embedding of the flattened_summary using text-embedding-3-small and store in pgvector column
+P0
+
+
+FR-KB-28
+Before embedding, system shall check Redis cache using SHA-256 hash of the flattened summary string. If cache hit, skip embedding API call
+P1
+
+
+FR-KB-29
+System shall store last_synced_commit SHA hash per project to detect stale GitHub data
+P1
+
+
+FR-KB-30
+System shall store user_impact_score calculated from lines of code vs. total repository size
+P2
+
+
+FR-KB-31
+If GitHub token is invalid during fetch, system shall save form data normally, set github_sync_status = false, and show "Reconnect GitHub" prompt
+P0
+
+
+FR-KB-32
+User shall be able to remove individual project entries from the vault
+P0
+
+
+FR-KB-33
+For users not authenticated via GitHub, GitHub link is still required but repo data fetch is skipped. Only form-provided data is stored
+P0
+
+
+3.3.4 Internships Section
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-KB-40
+Form shall have an "Add Internship" button in the internships section
+P0
+
+
+FR-KB-41
+Each internship entry shall have fields: Role, Company Name, Duration (start/end dates), Description (bullet points)
+P0
+
+
+FR-KB-42
+User shall be able to add up to 8 internships per vault
+P0
+
+
+FR-KB-43
+System shall infer and store role_domain tag (e.g., software_engineering, frontend, data_science, product_management) from role title and description using GPT-4o-mini
+P0
+
+
+FR-KB-44
+System shall extract and store inferred_tech_stack[] array from internship description bullet points using GPT-4o-mini
+P0
+
+
+FR-KB-45
+System shall calculate and store duration_months as integer from start/end dates
+P0
+
+
+FR-KB-46
+Internship data shall NOT be vectorized. Selection during forge uses SQL metadata filtering only
+P0
+
+
+FR-KB-47
+User shall be able to remove individual internship entries from the vault
+P0
+
+
+3.3.5 Vault Save & Update
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-KB-50
+Clicking "Save" shall persist all sections (constants, projects, internships, skills) to Neon in a single transaction
+P0
+
+
+FR-KB-51
+Save operation shall trigger GitHub data fetch + GPT-4o-mini synthesis + embedding generation as a FastAPI BackgroundTask
+P0
+
+
+FR-KB-52
+Frontend shall show a progress indicator during background processing with status updates
+P1
+
+
+FR-KB-53
+On "Edit" and save, system shall update only changed sections. Re-embedding shall only occur if project description or GitHub data changed
+P1
+
+
+FR-KB-54
+Vault metadata shall track created_at, last_updated, github_sync_status, base_template_id
+P0
+
+
+FR-KB-55
+Each constant section shall store source_origin (pdf/latex_code/manual_entry), original_filename, and parse_confidence_score
+P0
+
+
+FR-KB-56
+Skills shall store per-skill metadata: domain_category (frontend/backend/devops/databases) and origin_source (user_pdf/github_inferred)
+P0
+
+
+3.4 Resume Forge Module (FR-FORGE)
+3.4.1 Forge Configuration
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-FORGE-01
+User shall select a knowledge vault from a dropdown of their existing vaults
+P0
+
+
+FR-FORGE-02
+User shall select number of projects to include (1 to N, where N = number of projects in selected vault)
+P0
+
+
+FR-FORGE-03
+User shall select number of internships to include (1 to M, where M = number of internships in selected vault)
+P0
+
+
+FR-FORGE-04
+User shall paste the full Job Description text into a textarea
+P0
+
+
+FR-FORGE-05
+If navigating from Job Listings page, JD textarea shall be pre-filled with the scraped JD text via query parameter
+P0
+
+
+FR-FORGE-06
+User shall click "Forge Resume" to initiate the generation pipeline
+P0
+
+
+3.4.2 JD Parsing Pipeline
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-FORGE-10
+Stage 1: System shall cleanse raw JD text using Python regex/string rules to strip headers, footers, benefits sections, equal opportunity statements, and formatting noise
+P0
+
+
+FR-FORGE-11
+Stage 2: System shall use GPT-4o-mini to extract two outputs from cleansed JD: (a) flat JSON array of hard skills, (b) dense semantic paragraph of pure technical intent
+P0
+
+
+FR-FORGE-12
+System shall compute SHA-256 hash of raw JD text and check against resume_archive.jd_hash for deduplication. If match found, return cached results and skip re-parsing
+P1
+
+
+FR-FORGE-13
+System shall normalize skill aliases in the extracted skills array (e.g., "React.js" = "ReactJS" = "React") using a maintained alias mapping
+P1
+
+
+FR-FORGE-14
+System shall generate a vector embedding of the dense semantic paragraph using text-embedding-3-small
+P0
+
+
+3.4.3 Project Selection
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-FORGE-20
+System shall perform cosine similarity search (<=> operator) between JD embedding and all project embeddings in the selected vault
+P0
+
+
+FR-FORGE-21
+System shall return top N projects (where N = user-selected count) with similarity score > 0.3
+P0
+
+
+FR-FORGE-22
+If fewer projects pass the 0.3 threshold than requested, system shall display warning: "Only X of your Y projects are relevant to this JD. Consider adding more projects to your vault."
+P0
+
+
+FR-FORGE-23
+System shall pass the selected projects' full JSONB structured data (not the vector) to the Forge LLM
+P0
+
+
+3.4.4 Internship Selection
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-FORGE-30
+System shall select internships using SQL metadata filtering: match role_domain against JD-inferred role, match inferred_tech_stack against JD hard skills array, prefer longer duration_months as tiebreaker
+P0
+
+
+FR-FORGE-31
+System shall return top M internships (where M = user-selected count)
+P0
+
+
+FR-FORGE-32
+Internship bullet points shall NOT be rewritten. They are copied verbatim from the vault
+P0
+
+
+3.4.5 Skills Processing
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-FORGE-40
+System shall compute intersection between vault skills and JD hard skills array
+P0
+
+
+FR-FORGE-41
+Matching skills shall be placed at the top of each category, ordered by frequency of mention in JD
+P0
+
+
+FR-FORGE-42
+Non-matching skills shall be retained but placed lower in the list
+P0
+
+
+FR-FORGE-43
+Skills with origin_source = "user_pdf" shall never be removed, only reordered
+P0
+
+
+FR-FORGE-44
+Skill matching shall use exact string comparison (not semantic/vector), as ATS systems require exact keyword matches
+P0
+
+
+3.4.6 Content Generation (Forge LLM)
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-FORGE-50
+System shall use GPT-4o as the Forge engine for bullet point rewriting and summary generation
+P0
+
+
+FR-FORGE-51
+For each selected project, Forge LLM shall rewrite bullet points to highlight aspects most relevant to the JD role (e.g., frontend aspects of a full-stack project for a frontend role)
+P0
+
+
+FR-FORGE-52
+Forge LLM shall NOT fabricate metrics, statistics, or quantitative claims
+P0
+
+
+FR-FORGE-53
+Forge LLM shall write action-oriented bullets without fabricated numbers (e.g., "Optimized API response pipeline using Redis caching and query batching")
+P0
+
+
+FR-FORGE-54
+If has_summary = true
+
+3.4.6 Content Generation (Forge LLM) - continued
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-FORGE-54
+If has_summary = true flag is set in vault constants, Forge LLM shall generate a professional summary (2-3 sentences) tailored to the JD role, incorporating key skills and experience areas from the vault
+P0
+
+
+FR-FORGE-55
+If has_summary = false, summary section shall be omitted entirely from the final LaTeX output
+P0
+
+
+FR-FORGE-56
+Forge LLM shall receive the fixed LaTeX template as part of its system prompt and plug generated content into designated placeholder sections only
+P0
+
+
+FR-FORGE-57
+Forge LLM shall only modify: Projects, Internships, Skills, and Summary sections. Education, Contact Info, Achievements, and all other sections shall be copied verbatim from vault constants
+P0
+
+
+FR-FORGE-58
+Forge LLM output shall contain properly escaped LaTeX (all &, %, $, #, _, {, } characters escaped)
+P0
+
+
+FR-FORGE-59
+System shall run a post-processing sanitization pass on LLM-generated LaTeX to catch any unescaped special characters before compilation
+P0
+
+
+FR-FORGE-60
+Forge LLM shall be given a strict output schema: return only the LaTeX content blocks per section, not the full document. The backend assembles the final .tex file
+P1
+
+
+3.4.7 LaTeX Compilation & Output
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-FORGE-70
+System shall assemble the final .tex file by injecting Forge LLM output + vault constants into the fixed LaTeX template
+P0
+
+
+FR-FORGE-71
+System shall compile .tex to PDF using tectonic running inside a Docker container
+P0
+
+
+FR-FORGE-72
+If LaTeX compilation fails, system shall return the error log to the user and retain the .tex source for debugging
+P0
+
+
+FR-FORGE-73
+On successful compilation, system shall upload both .pdf and .tex files to S3 under resumes/{user_id}/{resume_id}/
+P0
+
+
+FR-FORGE-74
+System shall store pdf_s3_key, tex_s3_key, vault_id, jd_hash, and forge_config (selected project count, internship count, vault snapshot) in resume_archive table
+P0
+
+
+FR-FORGE-75
+System shall display the generated PDF to the user in an in-browser preview immediately after compilation
+P0
+
+
+FR-FORGE-76
+The entire Forge pipeline (JD parse → selection → generation → compilation → upload) shall execute as a FastAPI BackgroundTask with WebSocket status updates to the frontend
+P1
+
+
+FR-FORGE-77
+Forge pipeline timeout shall be set to 120 seconds. If exceeded, task is marked as failed and user is notified
+P1
+
+
+3.5 Resume Archive Module (FR-ARCHIVE)
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-ARCH-01
+Dashboard shall display all generated resumes as a list/grid sorted by created_at descending
+P0
+
+
+FR-ARCH-02
+Each archive entry shall display: resume title (auto-generated from JD role + company if detectable), vault name used, creation date
+P0
+
+
+FR-ARCH-03
+Clicking an archive entry shall open a PDF viewer (in-browser) showing the generated resume
+P0
+
+
+FR-ARCH-04
+User shall be able to download the PDF via a presigned S3 URL (15-minute expiry)
+P0
+
+
+FR-ARCH-05
+User shall be able to view the raw LaTeX source code in a code viewer with syntax highlighting
+P0
+
+
+FR-ARCH-06
+User shall be able to copy the LaTeX source code to clipboard with a single click
+P1
+
+
+FR-ARCH-07
+User shall be able to delete an archive entry. Deletion shall remove both S3 objects and the database record
+P0
+
+
+FR-ARCH-08
+Archive shall store forge_config JSONB containing: vault_id, project_ids_selected, internship_ids_selected, project_count, internship_count, jd_text_hash, model_used, timestamp
+P1
+
+
+FR-ARCH-09
+User shall be able to "Re-forge" from an archive entry, which navigates to Forge page pre-filled with the same vault selection and JD
+P2
+
+
+3.6 Job Listings Module (FR-JOBS)
+3.6.1 Job Scraping Engine
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-JOBS-01
+System shall run a scheduled scraping job daily at 06:00 IST via APScheduler
+P0
+
+
+FR-JOBS-02
+System shall scrape 30 job listings each from: Internshala, Wellfound, Indeed India, Naukri.com (120 total per day)
+P0
+
+
+FR-JOBS-03
+Each site shall have an independent scraper class implementing BaseScraper interface with an async scrape(limit: int) method
+P0
+
+
+FR-JOBS-04
+Internshala scraper shall use httpx + BeautifulSoup (server-rendered HTML)
+P0
+
+
+FR-JOBS-05
+Wellfound scraper shall use direct GraphQL API calls
+P0
+
+
+FR-JOBS-06
+Naukri scraper shall use httpx + BeautifulSoup for listing pages, with playwright fallback for lazy-loaded JD pages
+P0
+
+
+FR-JOBS-07
+Indeed India scraper shall use playwright with stealth mode due to Cloudflare protection
+P0
+
+
+FR-JOBS-08
+Each scraper failure shall be caught independently. One site failing shall not prevent other sites from being scraped
+P0
+
+
+FR-JOBS-09
+System shall log scraper errors with site name, error type, and timestamp to a scraper_logs table
+P1
+
+
+FR-JOBS-10
+System shall generate a SHA-256 fingerprint per job using title + company + source_site and store with UNIQUE constraint for deduplication
+P0
+
+
+FR-JOBS-11
+Duplicate jobs shall be silently skipped using ON CONFLICT (fingerprint) DO NOTHING
+P0
+
+
+FR-JOBS-12
+Each job record shall have expires_at defaulting to 30 days from scraped_at
+P0
+
+
+FR-JOBS-13
+System shall run a weekly cleanup job (Sunday 03:00 IST) to delete all jobs where expires_at < NOW()
+P1
+
+
+3.6.2 Job Listings UI
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-JOBS-20
+Jobs page shall display listings as cards showing: title, company, location, pay, source site badge
+P0
+
+
+FR-JOBS-21
+Listings shall be paginated at 20 per page
+P0
+
+
+FR-JOBS-22
+User shall be able to filter listings by source site via dropdown
+P1
+
+
+FR-JOBS-23
+User shall be able to search listings by title or company name
+P1
+
+
+FR-JOBS-24
+Clicking a job card shall expand it (inline or modal) to show the full JD text
+P0
+
+
+FR-JOBS-25
+Expanded job view shall have an "Apply Now" button that opens the original apply_url in a new browser tab
+P0
+
+
+FR-JOBS-26
+Expanded job view shall have a "Generate Resume" button that navigates to /forge?jd={encoded_jd_text} with the JD pre-filled
+P0
+
+
+FR-JOBS-27
+Source site badge shall be color-coded per site for quick visual identification
+P2
+
+
+3.7 Authentication Module (FR-AUTH)
+
+
+
+ID
+Requirement
+Priority
+
+
+
+FR-AUTH-01
+System shall support three authentication methods: GitHub OAuth, Google OAuth, Email + Password
+P0
+
+
+FR-AUTH-02
+GitHub OAuth shall request scopes: repo (private repo read access) and read:user (profile info)
+P0
+
+
+FR-AUTH-03
+GitHub OAuth access token shall be encrypted (AES-256) and stored in users.github_access_token_encrypted
+P0
+
+
+FR-AUTH-04
+Google OAuth shall use standard OpenID Connect flow for authentication only (no additional scopes)
+P0
+
+
+FR-AUTH-05
+Email + Password auth shall enforce minimum 8-character passwords with bcrypt hashing
+P0
+
+
+FR-AUTH-06
+System shall issue JWT access tokens (1-hour expiry) and refresh tokens (7-day expiry) on successful login
+P0
+
+
+FR-AUTH-07
+All authenticated API routes shall validate JWT via FastAPI dependency injection
+P0
+
+
+FR-AUTH-08
+If a user signs up via email/Google first and later connects GitHub, system shall merge accounts and store the GitHub token
+P1
+
+
+FR-AUTH-09
+Login page shall prominently feature GitHub OAuth as the recommended login method with a note explaining the benefit (automatic repo data fetching)
+P0
+
+
+FR-AUTH-10
+Failed login attempts shall be rate-limited to 5 per minute per IP
+P1
+
+
+3.8 Non-Functional Requirements (NFR)
+3.8.1 Performance
+
+
+
+ID
+Requirement
+Priority
+
+
+
+NFR-PERF-01
+Dashboard page load shall complete within 2 seconds
+P1
+
+
+NFR-PERF-02
+Vault save (excluding background tasks) shall respond within 3 seconds
+P1
+
+
+NFR-PERF-03
+Full Forge pipeline shall complete within 120 seconds end-to-end
+P0
+
+
+NFR-PERF-04
+JD parsing (Stage 1 + Stage 2) shall complete within 10 seconds
+P1
+
+
+NFR-PERF-05
+LaTeX compilation via tectonic shall complete within 15 seconds
+P1
+
+
+NFR-PERF-06
+S3 presigned URL generation shall complete within 500ms
+P1
+
+
+3.8.2 Cost Control
+
+
+
+ID
+Requirement
+Priority
+
+
+
+NFR-COST-01
+System shall log token usage (prompt + completion) for every OpenAI API call to api_usage table
+P0
+
+
+NFR-COST-02
+System shall enforce a configurable monthly token budget (default: 5,000,000 tokens). All LLM calls shall check remaining budget before execution
+P0
+
+
+NFR-COST-03
+Redis cache shall be used for embedding deduplication (SHA-256 key → vector value)
+P1
+
+
+NFR-COST-04
+Parsed JD results shall be cached by JD hash to prevent re-parsing identical job descriptions
+P1
+
+
+NFR-COST-05
+GitHub API calls shall be limited to 5 per repository per sync operation
+P0
+
+
+3.8.3 Security
+
+
+
+ID
+Requirement
+Priority
+
+
+
+NFR-SEC-01
+All GitHub tokens shall be encrypted at rest using AES-256
+P0
+
+
+NFR-SEC-02
+S3 bucket shall be private. All access shall be via presigned URLs only
+P0
+
+
+NFR-SEC-03
+API keys (OpenAI, AWS, GitHub OAuth secrets) shall be stored in environment variables, never in code
+P0
+
+
+NFR-SEC-04
+All API endpoints shall enforce user-scoped access. Users shall only access their own vaults, archives, and data
+P0
+
+
+NFR-SEC-05
+CORS shall be configured to allow only the frontend domain
+P1
+
+
+3.8.4 Reliability
+
+
+
+ID
+Requirement
+Priority
+
+
+
+NFR-REL-01
+Vault save shall be atomic. If any section fails to persist, the entire transaction shall roll back
+P0
+
+
+NFR-REL-02
+Scraper failures shall be isolated per site and logged. System shall continue operating if any scraper fails
+P0
+
+
+NFR-REL-03
+If LaTeX compilation fails, the .tex source shall be preserved and accessible to the user for manual debugging
+P0
+
+
+NFR-REL-04
+If GitHub API returns 401, system shall gracefully degrade: save form data, flag github_sync_status = false, prompt user to reconnect
+P0
+
+
+NFR-REL-05
+If OpenAI API is unreachable, system shall retry 3 times with exponential backoff (1s, 2s, 4s) before failing
+P1
+
+
+3.8.5 Scalability (Future-Proofing)
+
+
+
+ID
+Requirement
+Priority
+
+
+
+NFR-SCALE-01
+Database schema shall support multiple users even though initial deployment is single-user. All tables shall have user_id foreign keys
+P0
+
+
+NFR-SCALE-02
+pgvector shall NOT use an index (HNSW/IVFFlat) in v1. Sequential scan is optimal for < 100 vectors per user
+P0
+
+
+NFR-SCALE-03
+LaTeX template shall be stored as a configurable file, not hardcoded, to support future template additions
+P1
+
+
+NFR-SCALE-04
+Scraper interface (BaseScraper) shall be extensible to add new job sites without modifying existing code
+P1
+
