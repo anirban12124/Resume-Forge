@@ -12,7 +12,7 @@ async def log_api_usage(
     endpoint: str
 ) -> None:
     """
-    Logs OpenAI API token usage to the api_usage table.
+    Logs Google Gemini API token usage to the api_usage table.
     """
     total_tokens = prompt_tokens + completion_tokens
     query = """
@@ -32,7 +32,7 @@ async def log_api_usage(
 
 async def check_token_budget(conn: asyncpg.Connection) -> None:
     """
-    Checks the total OpenAI API token usage for the current calendar month.
+    Checks the total Google Gemini API token usage for the current calendar month.
     Raises BudgetExceeded if usage meets or exceeds the configured limit.
     """
     query = """
@@ -44,5 +44,5 @@ async def check_token_budget(conn: asyncpg.Connection) -> None:
     
     if total_used >= settings.MONTHLY_TOKEN_BUDGET:
         raise BudgetExceeded(
-            f"OpenAI monthly token budget exceeded. Currently used: {total_used}, limit: {settings.MONTHLY_TOKEN_BUDGET}."
+            f"Gemini monthly token budget exceeded. Currently used: {total_used}, limit: {settings.MONTHLY_TOKEN_BUDGET}."
         )

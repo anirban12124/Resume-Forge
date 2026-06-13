@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     GITHUB_CLIENT_SECRET: str
     GOOGLE_CLIENT_ID: str
     GOOGLE_CLIENT_SECRET: str
-    OPENAI_API_KEY: str
+    GEMINI_API_KEY: str
     JWT_SECRET_KEY: str
     AES_ENCRYPTION_KEY: str
     FRONTEND_URL: str = "http://localhost:3000"

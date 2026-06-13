@@ -74,7 +74,7 @@ def upgrade() -> None:
     op.create_index('ix_projects_vault_id', 'projects', ['vault_id'])
 
     # Add the pgvector embedding column to projects table using raw SQL as requested
-    op.execute("ALTER TABLE projects ADD COLUMN embedding vector(1536);")
+    op.execute("ALTER TABLE projects ADD COLUMN embedding vector(768);")
 
     # 5. Create Internships Table
     op.create_table(
