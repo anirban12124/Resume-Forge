@@ -56,7 +56,15 @@ app.add_middleware(
 register_exception_handlers(app)
 
 from app.auth import auth_router
+from app.vaults import vaults_router
+from app.projects import projects_router
+from app.internships import internships_router
+
 app.include_router(auth_router)
+app.include_router(vaults_router, prefix="/vaults")
+app.include_router(projects_router)
+app.include_router(internships_router)
+
 
 @app.get("/health", tags=["Health"])
 async def health_check():

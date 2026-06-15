@@ -21,14 +21,14 @@ async def get_current_user(authorization: str = Header(...)) -> Dict[str, Any]:
     FastAPI dependency that extracts and validates the JWT from the Authorization header.
     Returns a dict containing the user's ID and email.
     """
-    if not authorization.startswith("Bearer "):
-        raise Forbidden("Invalid authorization header. Expected 'Bearer <token>' format.")
-        
-    parts = authorization.split(" ")
-    if len(parts) != 2:
-        raise Forbidden("Invalid authorization header format. Expected 'Bearer <token>'.")
-        
-    token = parts[1]
+    authorization_stripped = authorization.strip()
+    if authorization_stripped.lower().startswith("bearer "):
+        parts = authorization_stripped.split(maxsplit=1)
+        if len(parts) != 2:
+            raise Forbidden("Invalid authorization header format. Expected 'Bearer <token>'.")
+        token = parts[1]
+    else:
+        token = authorization_stripped
     try:
         # Decode and validate the JWT token
         payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=["HS256"])

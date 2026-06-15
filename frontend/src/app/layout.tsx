@@ -1,5 +1,6 @@
 import "./globals.css";
 import { AuthProvider } from "@/hooks/use-auth";
+import { ToastProvider } from "@/components/ui/toast";
 
 export const metadata = {
   title: "ResumeForge - ATS-Optimized Resume Generator",
@@ -14,7 +15,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full">
       <body className="h-full bg-background text-foreground antialiased selection:bg-indigo-500/30">
-        <AuthProvider>{children}</AuthProvider>
+        <ToastProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </ToastProvider>
       </body>
     </html>
   );

@@ -31,6 +31,7 @@ python_venv/
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+test/
 
 # Node.js
 node_modules/
@@ -89,3 +90,7 @@ docker-compose.override.yml
 *.sqlite3
 *.db
 backend/alembic/versions/__pycache__/
+*.pdf
+*.tex
+*.txt
+.gitignore

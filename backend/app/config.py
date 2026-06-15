@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str
     JWT_SECRET_KEY: str
     AES_ENCRYPTION_KEY: str
+    LLAMA_CLOUD_API_KEY: str
     FRONTEND_URL: str = "http://localhost:3000"
     BACKEND_URL: str = "http://localhost:8000"
     MONTHLY_TOKEN_BUDGET: int = 5000000
