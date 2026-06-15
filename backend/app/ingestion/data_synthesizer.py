@@ -117,7 +117,7 @@ async def synthesize_project_data(
     """
 
     response = client.models.generate_content(
-        model="gemini-lite-latest",
+        model="gemini-flash-lite-latest",
         contents=prompt,
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
@@ -132,7 +132,7 @@ async def synthesize_project_data(
         await log_api_usage(
             conn=conn,
             user_id=user_id,
-            model_name="gemini-lite-latest",
+            model_name="gemini-flash-lite-latest",
             prompt_tokens=usage.prompt_token_count,
             completion_tokens=usage.candidates_token_count,
             endpoint="synthesize_project_data"

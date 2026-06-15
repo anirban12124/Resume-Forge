@@ -215,7 +215,7 @@ async def process_internship_background(user_id: UUID, internship_id: UUID, vaul
             prompt = f"Role Title: {role}\nDescription Bullet Points:\n{bullets_str}"
 
             response = client.models.generate_content(
-                model="gemini-lite-latest",
+                model="gemini-flash-lite-latest",
                 contents=prompt,
                 config=types.GenerateContentConfig(
                     system_instruction=system_instruction,
@@ -230,7 +230,7 @@ async def process_internship_background(user_id: UUID, internship_id: UUID, vaul
                 await log_api_usage(
                     conn=conn,
                     user_id=str(user_id),
-                    model_name="gemini-lite-latest",
+                    model_name="gemini-flash-lite-latest",
                     prompt_tokens=usage.prompt_token_count,
                     completion_tokens=usage.candidates_token_count,
                     endpoint="infer_internship_metadata"

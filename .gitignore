@@ -94,3 +94,5 @@ backend/alembic/versions/__pycache__/
 *.tex
 *.txt
 .gitignore
+/latex/templates/
+tectonic.exe

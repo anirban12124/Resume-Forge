@@ -59,11 +59,13 @@ from app.auth import auth_router
 from app.vaults import vaults_router
 from app.projects import projects_router
 from app.internships import internships_router
+from app.forge.router import router as forge_router
 
 app.include_router(auth_router)
 app.include_router(vaults_router, prefix="/vaults")
 app.include_router(projects_router)
 app.include_router(internships_router)
+app.include_router(forge_router, prefix="/forge")
 
 
 @app.get("/health", tags=["Health"])

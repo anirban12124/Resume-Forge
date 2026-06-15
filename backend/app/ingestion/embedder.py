@@ -2,6 +2,7 @@ import hashlib
 import json
 from typing import List, Optional
 from google import genai
+from google.genai import types
 import asyncpg
 from app.config import settings
 from app.redis import redis_client
@@ -38,7 +39,8 @@ async def embed_project_summary(
     client = genai.Client(api_key=settings.GEMINI_API_KEY)
     response = client.models.embed_content(
         model="gemini-embedding-001",
-        contents=summary
+        contents=summary,
+        config=types.EmbedContentConfig(output_dimensionality=768)
     )
 
     if not response.embeddings or len(response.embeddings) == 0:
