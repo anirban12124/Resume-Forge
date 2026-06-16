@@ -57,3 +57,15 @@ async def delete_file(s3_key: str) -> None:
     Asynchronously deletes an object from S3.
     """
     await asyncio.to_thread(_delete_file_sync, s3_key)
+
+def _download_file_sync(s3_key: str) -> bytes:
+    client = _get_s3_client()
+    response = client.get_object(Bucket=settings.S3_BUCKET_NAME, Key=s3_key)
+    return response['Body'].read()
+
+async def download_file(s3_key: str) -> bytes:
+    """
+    Asynchronously downloads a file from S3 and returns its raw bytes.
+    """
+    return await asyncio.to_thread(_download_file_sync, s3_key)
+
