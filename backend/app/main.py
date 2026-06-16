@@ -7,9 +7,26 @@ from app.database import init_db, close_db
 from app.redis import redis_client
 from app.common.exceptions import register_exception_handlers
 
+import sentry_sdk
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.starlette import StarletteIntegration
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("app.main")
+
+if settings.SENTRY_DSN:
+    logger.info("Initializing Sentry SDK...")
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        environment=settings.SENTRY_ENVIRONMENT,
+        integrations=[
+            StarletteIntegration(transaction_style="endpoint"),
+            FastApiIntegration(transaction_style="endpoint"),
+        ],
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0,
+    )
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

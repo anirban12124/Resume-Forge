@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     FRONTEND_URL: str = "http://localhost:3000"
     BACKEND_URL: str = "http://localhost:8000"
     MONTHLY_TOKEN_BUDGET: int = 5000000
+    SENTRY_DSN: str = ""
+    SENTRY_ENVIRONMENT: str = "development"
 
     # Look for the .env file in the current directory and also the parent directory.
     model_config = SettingsConfigDict(

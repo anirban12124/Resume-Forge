@@ -73,7 +73,13 @@ out/
 .env.production.local
 *.env
 !.env.example
-
+.env.sentry-build-plugin
+.sentryclirc
+/frontend/src/app/sentry-example-page
+# sentry.client.config.ts
+# sentry.edge.config.ts
+# sentry.server.config.ts
+# tsconfig.tsbuildinfo
 # IDEs and Editors
 .vscode/
 .idea/
